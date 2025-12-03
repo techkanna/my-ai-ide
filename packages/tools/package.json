@@ -1,0 +1,22 @@
+{
+  "name": "@my-ai-ide/tools",
+  "version": "0.1.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@my-ai-ide/shared": "workspace:*",
+    "@my-ai-ide/agent-core": "workspace:*",
+    "playwright": "^1.40.0",
+    "simple-git": "^3.20.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/node": "^20.10.0"
+  }
+}
+

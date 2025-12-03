@@ -1,0 +1,52 @@
+# Dependencies
+node_modules
+**/node_modules
+pnpm-lock.yaml
+
+# Build outputs
+dist
+**/dist
+.next
+**/.next
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs
+**/logs
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+README.md
+PLAN.md
+*.md
+
+# Docker files (don't copy into image)
+docker-compose.yml
+Dockerfile*
+.dockerignore
+

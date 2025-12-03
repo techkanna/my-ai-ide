@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: my-ai-ide-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
+      - PROJECT_ROOT=${PROJECT_ROOT:-/workspace}
+    volumes:
+      # Mount workspace directory for project files
+      - ${PROJECT_ROOT:-./workspace}:/workspace
+      # Optional: Mount for persistent data
+      - backend-data:/app/data
+    restart: unless-stopped
+    networks:
+      - ai-ide-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/models/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: my-ai-ide-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NEXT_PUBLIC_BACKEND_URL=http://backend:3001
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ai-ide-network
+
+volumes:
+  backend-data:
+    driver: local
+
+networks:
+  ai-ide-network:
+    driver: bridge
+

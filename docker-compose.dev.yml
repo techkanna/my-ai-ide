@@ -1,0 +1,64 @@
+version: '3.8'
+
+# Development docker-compose with hot reload
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: base
+    container_name: my-ai-ide-backend-dev
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - HOST=0.0.0.0
+      - PROJECT_ROOT=${PROJECT_ROOT:-/workspace}
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/backend:/app/apps/backend
+      - ./packages:/app/packages
+      - ${PROJECT_ROOT:-./workspace}:/workspace
+      - backend-node-modules:/app/node_modules
+      - packages-node-modules:/app/packages/*/node_modules
+    command: pnpm --filter "@my-ai-ide/backend" dev
+    restart: unless-stopped
+    networks:
+      - ai-ide-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: base
+    container_name: my-ai-ide-frontend-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - NEXT_PUBLIC_BACKEND_URL=http://backend:3001
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/frontend:/app/apps/frontend
+      - ./packages:/app/packages
+      - frontend-node-modules:/app/apps/frontend/node_modules
+      - frontend-next:/app/apps/frontend/.next
+    command: pnpm --filter "@my-ai-ide/frontend" dev
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - ai-ide-network
+
+volumes:
+  backend-node-modules:
+  packages-node-modules:
+  frontend-node-modules:
+  frontend-next:
+
+networks:
+  ai-ide-network:
+    driver: bridge
+
