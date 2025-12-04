@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { getBackendUrl } from '@/src/config';
+import { getBackendUrl } from '@/utils/config';
 
 interface Message {
   role: 'user' | 'assistant';

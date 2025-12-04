@@ -9,17 +9,17 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@my-ai-ide/shared": "workspace:*",
-    "@my-ai-ide/models": "workspace:*",
+    "@fastify/cors": "^8.4.0",
     "@my-ai-ide/agent-core": "workspace:*",
+    "@my-ai-ide/models": "workspace:*",
+    "@my-ai-ide/shared": "workspace:*",
     "@my-ai-ide/tools": "workspace:*",
-    "fastify": "^4.24.3",
-    "@fastify/cors": "^8.4.0"
+    "dotenv": "^17.2.3",
+    "fastify": "^4.24.3"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "typescript": "^5.3.0",
-    "tsx": "^4.7.0"
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
   }
 }
-

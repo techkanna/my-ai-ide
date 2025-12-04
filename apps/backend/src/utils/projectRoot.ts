@@ -37,16 +37,23 @@ export function getProjectRoot(): string {
   
   // Check environment variable first
   const envRoot = process.env.PROJECT_ROOT;
+  console.log('[projectRoot] PROJECT_ROOT env var:', envRoot ? `"${envRoot}"` : 'undefined');
+  
   if (envRoot) {
     const resolved = path.resolve(envRoot);
+    console.log('[projectRoot] Resolved path:', resolved);
     if (existsSync(resolved)) {
+      console.log('[projectRoot] Using PROJECT_ROOT:', resolved);
       cachedProjectRoot = resolved;
       return resolved;
+    } else {
+      console.warn('[projectRoot] PROJECT_ROOT path does not exist:', resolved);
     }
   }
   
   // Default to workspace root
   const workspaceRoot = findWorkspaceRoot();
+  console.log('[projectRoot] Using workspace root:', workspaceRoot);
   cachedProjectRoot = workspaceRoot;
   return workspaceRoot;
 }

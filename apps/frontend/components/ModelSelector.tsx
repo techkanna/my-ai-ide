@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getBackendUrl } from '@/src/config';
+import { getBackendUrl } from '@/utils/config';
 
 interface ModelInfo {
   provider: 'ollama-cloud' | 'ollama-local';
