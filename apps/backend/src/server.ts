@@ -9,6 +9,7 @@ import { fsRoutes } from './routes/fs';
 import { mcpRoutes } from './routes/mcp';
 import { modelRoutes } from './routes/models';
 import { dockerRoutes } from './routes/docker';
+import { terminalRoutes } from './routes/terminal';
 
 const server = Fastify({
   logger: true,
@@ -31,6 +32,7 @@ async function start() {
     await server.register(mcpRoutes);
     await server.register(modelRoutes);
     await server.register(dockerRoutes);
+    await server.register(terminalRoutes);
 
     const port = Number(process.env.PORT) || 3001;
     const host = process.env.HOST || '0.0.0.0';

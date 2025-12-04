@@ -4,12 +4,14 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { useEditorStore } from '@/store/editorStore';
 import { getBackendUrl } from '@/utils/config';
+import { Terminal } from './Terminal';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export function Editor() {
-  const { getActiveTab, updateTabContent, activeTabId } = useEditorStore();
+  const { getActiveTab, updateTabContent, activeTabId, isTerminalTab } = useEditorStore();
   const activeTab = getActiveTab();
+  const isTerminal = activeTabId ? isTerminalTab(activeTabId) : false;
   const editorRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -160,6 +162,11 @@ export function Editor() {
         </div>
       </div>
     );
+  }
+
+  // Render terminal for terminal tabs
+  if (isTerminal) {
+    return <Terminal />;
   }
 
   return (

@@ -5,6 +5,7 @@ export interface Tab {
   path: string;
   content: string;
   unsaved: boolean;
+  type?: 'file' | 'terminal'; // Default is 'file'
 }
 
 interface EditorState {
@@ -15,13 +16,15 @@ interface EditorState {
   setCurrentFile: (path: string, content: string) => void; // Deprecated
   setContent: (content: string) => void; // Deprecated
   // New tab methods
-  addTab: (path: string, content: string) => string; // Returns tab ID
+  addTab: (path: string, content: string, type?: 'file' | 'terminal') => string; // Returns tab ID
+  addTerminalTab: () => string; // Returns tab ID for terminal
   closeTab: (tabId: string) => void;
   switchTab: (tabId: string) => void;
   updateTabContent: (tabId: string, content: string, unsaved?: boolean) => void;
   getActiveTab: () => Tab | null;
   isFileOpen: (path: string) => boolean;
   getTabByPath: (path: string) => Tab | null;
+  isTerminalTab: (tabId: string) => boolean;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -43,13 +46,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   
   // New tab methods
-  addTab: (path: string, content: string) => {
+  addTab: (path: string, content: string, type: 'file' | 'terminal' = 'file') => {
     const state = get();
-    // Check if file is already open
-    const existingTab = state.getTabByPath(path);
-    if (existingTab) {
-      state.switchTab(existingTab.id);
-      return existingTab.id;
+    // Check if file is already open (only for file tabs)
+    if (type === 'file') {
+      const existingTab = state.getTabByPath(path);
+      if (existingTab) {
+        state.switchTab(existingTab.id);
+        return existingTab.id;
+      }
     }
     
     // Create new tab
@@ -59,16 +64,49 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       path,
       content,
       unsaved: false,
+      type,
     };
     
     set((state) => ({
       tabs: [...state.tabs, newTab],
       activeTabId: tabId,
-      currentFile: path, // Update legacy field
-      content, // Update legacy field
+      currentFile: type === 'file' ? path : state.currentFile, // Update legacy field only for files
+      content: type === 'file' ? content : state.content, // Update legacy field only for files
     }));
     
     return tabId;
+  },
+  
+  addTerminalTab: () => {
+    const state = get();
+    // Check if terminal tab already exists
+    const existingTerminal = state.tabs.find(tab => tab.type === 'terminal');
+    if (existingTerminal) {
+      state.switchTab(existingTerminal.id);
+      return existingTerminal.id;
+    }
+    
+    // Create new terminal tab
+    const tabId = `terminal-${Date.now()}`;
+    const newTab: Tab = {
+      id: tabId,
+      path: 'terminal',
+      content: '',
+      unsaved: false,
+      type: 'terminal',
+    };
+    
+    set((state) => ({
+      tabs: [...state.tabs, newTab],
+      activeTabId: tabId,
+    }));
+    
+    return tabId;
+  },
+  
+  isTerminalTab: (tabId: string) => {
+    const tab = get().tabs.find(t => t.id === tabId);
+    return tab?.type === 'terminal';
   },
   
   closeTab: (tabId: string) => {

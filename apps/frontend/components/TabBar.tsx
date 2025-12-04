@@ -4,7 +4,7 @@ import { useEditorStore } from '@/store/editorStore';
 import { useRef, useEffect } from 'react';
 
 export function TabBar() {
-  const { tabs, activeTabId, switchTab, closeTab } = useEditorStore();
+  const { tabs, activeTabId, switchTab, closeTab, addTerminalTab } = useEditorStore();
   const tabBarRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
 
@@ -31,7 +31,10 @@ export function TabBar() {
     }
   }, [activeTabId]);
 
-  const getFileName = (path: string) => {
+  const getFileName = (path: string, type?: 'file' | 'terminal') => {
+    if (type === 'terminal') {
+      return 'Terminal';
+    }
     const parts = path.split('/');
     return parts[parts.length - 1] || path;
   };
@@ -41,15 +44,33 @@ export function TabBar() {
     closeTab(tabId);
   };
 
-  if (tabs.length === 0) {
-    return null;
-  }
-
   return (
     <div className="flex items-center border-b border-gray-300 bg-gray-50 overflow-x-auto" ref={tabBarRef} style={{ scrollbarWidth: 'thin' }}>
+      {/* New Terminal Button */}
+      <button
+        onClick={() => addTerminalTab()}
+        className="px-3 py-2 border-r border-gray-300 bg-gray-50 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2"
+        title="Open Terminal"
+      >
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
+        </svg>
+        <span className="text-sm font-medium">Terminal</span>
+      </button>
+      
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
-        const fileName = getFileName(tab.path);
+        const fileName = getFileName(tab.path, tab.type);
         
         return (
           <div
@@ -66,9 +87,24 @@ export function TabBar() {
             `}
             title={tab.path}
           >
+            {tab.type === 'terminal' && (
+              <svg
+                className="w-4 h-4 text-green-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+            )}
             <span className="flex-1 truncate text-sm font-medium">
               {fileName}
-              {tab.unsaved && (
+              {tab.unsaved && tab.type !== 'terminal' && (
                 <span className="ml-1 text-orange-500">●</span>
               )}
             </span>
