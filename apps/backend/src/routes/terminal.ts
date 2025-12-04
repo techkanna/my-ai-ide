@@ -24,6 +24,25 @@ export async function terminalRoutes(fastify: FastifyInstance) {
     const projectRoot = getProjectRoot();
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    // Get initial working directory from query parameter
+    const initialCwdParam = (req.query as { cwd?: string })?.cwd;
+    let initialCwd = projectRoot;
+    
+    if (initialCwdParam) {
+      try {
+        const resolvedCwd = path.resolve(projectRoot, initialCwdParam);
+        const normalizedProjectRoot = path.resolve(projectRoot);
+        const normalizedCwd = path.resolve(resolvedCwd);
+        
+        // Security check: ensure initial CWD is within project root
+        if (normalizedCwd.startsWith(normalizedProjectRoot)) {
+          initialCwd = normalizedCwd;
+        }
+      } catch (error) {
+        console.warn('Invalid initial CWD, using project root:', error);
+      }
+    }
+    
     // Determine shell based on platform
     const shell = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/bash';
     // Use -i for interactive mode (required for input), but we'll suppress job control errors
@@ -32,10 +51,11 @@ export async function terminalRoutes(fastify: FastifyInstance) {
     // Default terminal dimensions (will be updated on resize)
     let terminalCols = 80;
     let terminalRows = 24;
+    let currentCwd = initialCwd;
     
     // Spawn shell process with proper terminal emulation
     const shellProcess = spawn(shell, shellArgs, {
-      cwd: projectRoot,
+      cwd: initialCwd,
       env: {
         ...process.env,
         TERM: 'xterm-256color',
@@ -54,20 +74,50 @@ export async function terminalRoutes(fastify: FastifyInstance) {
     // Store session
     terminalSessions.set(sessionId, {
       process: shellProcess,
-      cwd: projectRoot,
+      cwd: initialCwd,
     });
+
+    // Function to update and notify CWD changes
+    const updateCwd = (newCwd: string) => {
+      const normalizedProjectRoot = path.resolve(projectRoot);
+      const normalizedCwd = path.resolve(newCwd);
+      
+      // Security check: ensure CWD is within project root
+      if (normalizedCwd.startsWith(normalizedProjectRoot)) {
+        currentCwd = normalizedCwd;
+        const session = terminalSessions.get(sessionId);
+        if (session) {
+          session.cwd = currentCwd;
+        }
+        
+        // Notify client of CWD change
+        try {
+          connection.socket.send(JSON.stringify({
+            type: 'cwd',
+            cwd: currentCwd,
+          }));
+        } catch (error) {
+          console.error('Error sending CWD update:', error);
+        }
+      }
+    };
 
     // Send initial connection message
     connection.socket.send(JSON.stringify({
       type: 'connected',
       sessionId,
-      cwd: projectRoot,
+      cwd: initialCwd,
     }));
 
     // Set terminal dimensions immediately so shell knows the width
     // This must be done before any output to ensure prompt formatting is correct
     if (shellProcess.stdin && !shellProcess.stdin.destroyed) {
       try {
+        // Change to initial directory if different from project root
+        if (initialCwd !== projectRoot) {
+          shellProcess.stdin.write(`cd "${initialCwd}"\n`);
+        }
+        
         // Export COLUMNS and LINES so the shell knows the terminal size
         shellProcess.stdin.write(`export COLUMNS=${terminalCols} LINES=${terminalRows}\n`);
         
@@ -75,6 +125,13 @@ export async function terminalRoutes(fastify: FastifyInstance) {
         // For bash, disable job control and suppress the error
         if (shell.includes('bash')) {
           shellProcess.stdin.write('set +m 2>/dev/null || true\n');
+        }
+        
+        // Set up a hook to track CWD changes (bash/zsh)
+        if (shell.includes('bash') || shell.includes('zsh')) {
+          // Add a function to the prompt that sends pwd
+          // This is a simple approach - in production, you might use PROMPT_COMMAND or precmd
+          shellProcess.stdin.write('export PS1="$PS1"\n'); // Keep existing prompt
         }
       } catch (error) {
         console.error('Error setting up shell:', error);
@@ -91,6 +148,16 @@ export async function terminalRoutes(fastify: FastifyInstance) {
             type: 'output',
             data: output,
           }));
+          
+          // Try to detect pwd output to track CWD changes
+          // This is a simple approach - in production, you might want to hook into the shell prompt
+          const pwdMatch = output.match(/^(\/[^\n\r]+)$/m);
+          if (pwdMatch) {
+            const detectedCwd = pwdMatch[1].trim();
+            if (detectedCwd && detectedCwd !== currentCwd) {
+              updateCwd(detectedCwd);
+            }
+          }
         }
       } catch (error) {
         console.error('Error sending stdout:', error);
@@ -151,9 +218,31 @@ export async function terminalRoutes(fastify: FastifyInstance) {
           if (session && session.process.stdin && !session.process.stdin.destroyed) {
             try {
               session.process.stdin.write(data.data);
+              
+              // Track cd commands to update CWD
+              // This is a simple heuristic - in a production system, you might want to
+              // use a more sophisticated approach like hooking into the shell's prompt
+              const inputStr = data.data.toString();
+              if (inputStr.includes('cd ') && (inputStr.includes('\n') || inputStr.includes('\r'))) {
+                // Extract cd command and directory
+                const cdMatch = inputStr.match(/cd\s+([^\n\r]+)/);
+                if (cdMatch) {
+                  const targetDir = cdMatch[1].trim();
+                  // Wait a bit for the command to execute, then check CWD
+                  setTimeout(() => {
+                    // Use pwd command to get actual CWD (more reliable)
+                    // We'll handle this in the output parsing instead
+                  }, 100);
+                }
+              }
             } catch (error) {
               console.error('Error writing to stdin:', error);
             }
+          }
+        } else if (data.type === 'cwd') {
+          // Client requesting to set initial CWD
+          if (data.cwd) {
+            updateCwd(data.cwd);
           }
         } else if (data.type === 'resize') {
           // Handle terminal resize

@@ -17,7 +17,7 @@ interface EditorState {
   setContent: (content: string) => void; // Deprecated
   // New tab methods
   addTab: (path: string, content: string, type?: 'file' | 'terminal') => string; // Returns tab ID
-  addTerminalTab: () => string; // Returns tab ID for terminal
+  addTerminalTab: (initialCwd?: string) => string; // Returns tab ID for terminal, optionally with initial working directory
   closeTab: (tabId: string) => void;
   switchTab: (tabId: string) => void;
   updateTabContent: (tabId: string, content: string, unsaved?: boolean) => void;
@@ -77,21 +77,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     return tabId;
   },
   
-  addTerminalTab: () => {
+  addTerminalTab: (initialCwd?: string) => {
     const state = get();
-    // Check if terminal tab already exists
-    const existingTerminal = state.tabs.find(tab => tab.type === 'terminal');
-    if (existingTerminal) {
-      state.switchTab(existingTerminal.id);
-      return existingTerminal.id;
-    }
     
-    // Create new terminal tab
-    const tabId = `terminal-${Date.now()}`;
+    // Count existing terminal tabs to generate unique name
+    const terminalCount = state.tabs.filter(tab => tab.type === 'terminal').length;
+    const terminalName = terminalCount === 0 ? 'Terminal' : `Terminal ${terminalCount + 1}`;
+    
+    // Create new terminal tab with unique name
+    const tabId = `terminal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newTab: Tab = {
       id: tabId,
-      path: 'terminal',
-      content: '',
+      path: initialCwd ? `${terminalName} (${initialCwd})` : terminalName,
+      content: initialCwd || '', // Store initial CWD in content field for terminal tabs
       unsaved: false,
       type: 'terminal',
     };
@@ -113,6 +111,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const tabIndex = state.tabs.findIndex((t) => t.id === tabId);
       if (tabIndex === -1) return state;
+      
+      const tabToClose = state.tabs[tabIndex];
+      
+      // Clean up terminal session if closing a terminal tab
+      if (tabToClose?.type === 'terminal') {
+        // Import terminal store to clean up session
+        import('@/store/terminalStore').then(({ useTerminalStore }) => {
+          useTerminalStore.getState().deleteSession(tabId);
+        });
+      }
       
       const newTabs = state.tabs.filter((t) => t.id !== tabId);
       let newActiveTabId = state.activeTabId;

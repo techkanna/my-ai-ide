@@ -30,7 +30,7 @@ export function FileTree() {
   const [draggedFile, setDraggedFile] = useState<FileNode | null>(null);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
-  const { addTab, isFileOpen, switchTab, getTabByPath } = useEditorStore();
+  const { addTab, isFileOpen, switchTab, getTabByPath, addTerminalTab } = useEditorStore();
 
   useEffect(() => {
     loadProjectRoot();
@@ -547,6 +547,17 @@ export function FileTree() {
         >
           {contextMenu.file && (
             <>
+              {contextMenu.file.type === 'directory' && (
+                <button
+                  onClick={() => {
+                    addTerminalTab(contextMenu.file!.path);
+                    setContextMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-gray-100 text-green-600"
+                >
+                  Open Terminal Here
+                </button>
+              )}
               <button
                 onClick={() => openRenameModal(contextMenu.file!)}
                 className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-gray-100"
