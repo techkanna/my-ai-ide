@@ -1,153 +1,305 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Terminal as XTerm } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import { WebLinksAddon } from 'xterm-addon-web-links';
+import 'xterm/css/xterm.css';
 import { getBackendUrl } from '@/utils/config';
 
-interface CommandHistory {
-  command: string;
-  output: string;
-  error: string;
-  exitCode: number;
-  timestamp: Date;
-}
-
 export function Terminal() {
-  const [command, setCommand] = useState('');
-  const [history, setHistory] = useState<CommandHistory[]>([]);
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [currentDir, setCurrentDir] = useState<string>('');
-  const inputRef = useRef<HTMLInputElement>(null);
-  const outputRef = useRef<HTMLDivElement>(null);
-  const historyIndexRef = useRef<number>(-1);
-  const commandHistoryRef = useRef<string[]>([]);
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const xtermRef = useRef<XTerm | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
 
-  // Load current directory on mount
   useEffect(() => {
-    loadCurrentDir();
-  }, []);
+    if (!terminalRef.current) return;
 
-  // Scroll to bottom when history updates
-  useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    let xterm: XTerm | null = null;
+    let fitAddon: FitAddon | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    // Initialize xterm
+    xterm = new XTerm({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "source-code-pro", monospace',
+      theme: {
+        background: '#1e1e1e',
+        foreground: '#d4d4d4',
+        cursor: '#aeafad',
+        black: '#000000',
+        red: '#cd3131',
+        green: '#0dbc79',
+        yellow: '#e5e510',
+        blue: '#2472c8',
+        magenta: '#bc3fbc',
+        cyan: '#11a8cd',
+        white: '#e5e5e5',
+        brightBlack: '#666666',
+        brightRed: '#f14c4c',
+        brightGreen: '#23d18b',
+        brightYellow: '#f5f543',
+        brightBlue: '#3b8eea',
+        brightMagenta: '#d670d6',
+        brightCyan: '#29b8db',
+        brightWhite: '#e5e5e5',
+      },
+      allowProposedApi: true,
+      convertEol: true,
+      disableStdin: false,
+      cursorStyle: 'block',
+      lineHeight: 1.2,
+      letterSpacing: 0,
+    });
+
+    // Initialize addons
+    fitAddon = new FitAddon();
+    const webLinksAddon = new WebLinksAddon();
+
+    xterm.loadAddon(fitAddon);
+    xterm.loadAddon(webLinksAddon);
+
+    // Open terminal in DOM - MUST be called before fit()
+    if (terminalRef.current) {
+      xterm.open(terminalRef.current);
     }
-  }, [history]);
 
-  // Focus input on mount
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    // Store references
+    xtermRef.current = xterm;
+    fitAddonRef.current = fitAddon;
 
-  const loadCurrentDir = async () => {
-    try {
-      const response = await fetch(`${getBackendUrl()}/terminal/cwd`);
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentDir(data.cwd || '');
+    // Function to fit terminal with error handling
+    const fitTerminal = () => {
+      if (fitAddon && xterm && terminalRef.current) {
+        try {
+          // Check if container has dimensions and terminal is open
+          const rect = terminalRef.current.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0 && xterm.element) {
+            fitAddon.fit();
+            // Notify server of resize with actual dimensions
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              const cols = xterm.cols || 80;
+              const rows = xterm.rows || 24;
+              wsRef.current.send(JSON.stringify({
+                type: 'resize',
+                cols,
+                rows,
+              }));
+            }
+          }
+        } catch (error) {
+          console.warn('Error fitting terminal:', error);
+        }
       }
-    } catch (error) {
-      console.error('Failed to load current directory:', error);
+    };
+
+    // Use ResizeObserver to watch for container size changes
+    if (terminalRef.current && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        // Debounce resize
+        setTimeout(fitTerminal, 100);
+      });
+      resizeObserver.observe(terminalRef.current);
     }
-  };
 
-  const executeCommand = async (cmd: string) => {
-    if (!cmd.trim() || isExecuting) return;
+    // Initial fit after ensuring container is sized and terminal is open
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        fitTerminal();
+        // Connect WebSocket after terminal is ready
+        if (xterm) {
+          connectWebSocket(xterm);
+        }
+      }, 300);
+    });
 
-    setIsExecuting(true);
-    const commandToExecute = cmd.trim();
+    // Handle window resize
+    const handleResize = () => {
+      fitTerminal();
+    };
 
-    // Add to command history for navigation
-    if (commandToExecute && (!commandHistoryRef.current.length || commandHistoryRef.current[commandHistoryRef.current.length - 1] !== commandToExecute)) {
-      commandHistoryRef.current.push(commandToExecute);
-    }
-    historyIndexRef.current = commandHistoryRef.current.length;
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (xterm) {
+        xterm.dispose();
+      }
+      xtermRef.current = null;
+      fitAddonRef.current = null;
+    };
+  }, []);
+
+  const connectWebSocket = (xterm: XTerm) => {
+    setConnectionStatus('connecting');
+
+    // Get WebSocket URL - convert http/https to ws/wss
+    const backendUrl = getBackendUrl();
+    const wsUrl = backendUrl.replace(/^http/, 'ws').replace(/^https/, 'wss') + '/terminal/ws';
 
     try {
-      const response = await fetch(`${getBackendUrl()}/terminal/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          command: commandToExecute,
-          cwd: currentDir,
-        }),
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        setIsConnected(true);
+        setConnectionStatus('connected');
+        xterm.writeln('\x1b[32mConnected to terminal\x1b[0m');
+        
+        // Send initial terminal dimensions
+        if (xterm.cols && xterm.rows) {
+          ws.send(JSON.stringify({
+            type: 'resize',
+            cols: xterm.cols,
+            rows: xterm.rows,
+          }));
+        }
+        
+        // Focus terminal after a short delay to ensure it's ready
+        setTimeout(() => {
+          xterm.focus();
+        }, 100);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+
+          switch (message.type) {
+            case 'connected':
+              xterm.writeln(`\x1b[32mTerminal session started (${message.sessionId})\x1b[0m`);
+              if (message.cwd) {
+                xterm.writeln(`\x1b[36mWorking directory: ${message.cwd}\x1b[0m`);
+              }
+              break;
+
+            case 'output':
+              // Write output directly to terminal
+              xterm.write(message.data);
+              break;
+
+            case 'exit':
+              xterm.writeln(`\x1b[33m\r\nProcess exited with code ${message.code}\x1b[0m`);
+              break;
+
+            case 'error':
+              xterm.writeln(`\x1b[31m\r\nError: ${message.message}\x1b[0m`);
+              break;
+
+            case 'resized':
+              // Acknowledge resize
+              break;
+
+            default:
+              console.warn('Unknown message type:', message.type);
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setConnectionStatus('error');
+        if (xtermRef.current) {
+          xtermRef.current.writeln('\x1b[31m\r\nConnection error. Please refresh.\x1b[0m');
+        }
+      };
+
+      ws.onclose = (event) => {
+        setIsConnected(false);
+        setConnectionStatus('disconnected');
+        if (xtermRef.current) {
+          if (event.code !== 1000) {
+            // Not a normal closure
+            xtermRef.current.writeln('\x1b[33m\r\nConnection closed. Reconnecting...\x1b[0m');
+            // Attempt to reconnect after a delay
+            setTimeout(() => {
+              if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+                if (xtermRef.current) {
+                  connectWebSocket(xtermRef.current);
+                }
+              }
+            }, 2000);
+          } else {
+            xtermRef.current.writeln('\x1b[33m\r\nConnection closed.\x1b[0m');
+          }
+        }
+      };
+
+      // Handle terminal input
+      xterm.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({
+              type: 'input',
+              data: data,
+            }));
+          } catch (error) {
+            console.error('Error sending input:', error);
+          }
+        }
       });
 
-      const result = await response.json();
+      // Handle terminal resize
+      xterm.onResize(({ cols, rows }) => {
+        if (ws.readyState === WebSocket.OPEN && cols > 0 && rows > 0) {
+          ws.send(JSON.stringify({
+            type: 'resize',
+            cols,
+            rows,
+          }));
+        }
+      });
 
-      const newHistoryItem: CommandHistory = {
-        command: commandToExecute,
-        output: result.stdout || '',
-        error: result.stderr || '',
-        exitCode: result.exitCode || 0,
-        timestamp: new Date(),
-      };
-
-      setHistory((prev) => [...prev, newHistoryItem]);
-      setCommand('');
-
-      // Update current directory if cd command was executed
-      if (commandToExecute.startsWith('cd ')) {
-        // Note: cd doesn't work in subprocess, but we can track it client-side
-        // For now, we'll just reload the directory
-        setTimeout(() => loadCurrentDir(), 100);
-      }
+      wsRef.current = ws;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const newHistoryItem: CommandHistory = {
-        command: commandToExecute,
-        output: '',
-        error: `Error: ${errorMessage}`,
-        exitCode: 1,
-        timestamp: new Date(),
-      };
-      setHistory((prev) => [...prev, newHistoryItem]);
-      setCommand('');
-    } finally {
-      setIsExecuting(false);
-      inputRef.current?.focus();
+      console.error('Failed to create WebSocket:', error);
+      setConnectionStatus('error');
+      xterm.writeln('\x1b[31mFailed to connect to terminal server.\x1b[0m');
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      executeCommand(command);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (historyIndexRef.current > 0) {
-        historyIndexRef.current--;
-        setCommand(commandHistoryRef.current[historyIndexRef.current]);
-      }
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (historyIndexRef.current < commandHistoryRef.current.length - 1) {
-        historyIndexRef.current++;
-        setCommand(commandHistoryRef.current[historyIndexRef.current]);
-      } else {
-        historyIndexRef.current = commandHistoryRef.current.length;
-        setCommand('');
-      }
+  const getStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'bg-green-500';
+      case 'connecting':
+        return 'bg-yellow-500';
+      case 'error':
+        return 'bg-red-500';
+      default:
+        return 'bg-gray-500';
     }
   };
 
-  const getPrompt = () => {
-    const dir = currentDir ? currentDir.split('/').pop() || currentDir : '~';
-    return `$ `;
-  };
-
-  const formatOutput = (text: string) => {
-    if (!text) return '';
-    return text.split('\n').map((line, idx) => (
-      <div key={idx} className="font-mono text-sm">
-        {line || ' '}
-      </div>
-    ));
+  const getStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected';
+      case 'connecting':
+        return 'Connecting...';
+      case 'error':
+        return 'Error';
+      default:
+        return 'Disconnected';
+    }
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-gray-900 text-green-400 font-mono text-sm">
+    <div className="h-full w-full flex flex-col bg-gray-900">
       {/* Terminal Header */}
       <div className="px-4 py-2 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -156,85 +308,25 @@ export function Terminal() {
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
           <span className="ml-4 text-gray-400 text-xs">Terminal</span>
         </div>
-        {currentDir && (
-          <span className="text-gray-500 text-xs truncate max-w-md" title={currentDir}>
-            {currentDir}
-          </span>
-        )}
-      </div>
-
-      {/* Output Area */}
-      <div
-        ref={outputRef}
-        className="flex-1 overflow-y-auto p-4 space-y-1"
-        style={{ scrollbarWidth: 'thin' }}
-      >
-        {history.length === 0 && (
-          <div className="text-gray-500 text-sm">
-            <div>Welcome to the terminal. Type a command and press Enter to execute.</div>
-            <div className="mt-2">Example commands: ls, pwd, cat, echo, etc.</div>
-          </div>
-        )}
-        {history.map((item, idx) => (
-          <div key={idx} className="space-y-1">
-            {/* Command */}
-            <div className="flex items-start gap-2">
-              <span className="text-green-400">{getPrompt()}</span>
-              <span className="text-white flex-1">{item.command}</span>
-            </div>
-            {/* Output */}
-            {item.output && (
-              <div className="text-gray-300 ml-6 whitespace-pre-wrap">
-                {formatOutput(item.output)}
-              </div>
-            )}
-            {/* Error */}
-            {item.error && (
-              <div className="text-red-400 ml-6 whitespace-pre-wrap">
-                {formatOutput(item.error)}
-              </div>
-            )}
-            {/* Exit code if non-zero */}
-            {item.exitCode !== 0 && (
-              <div className="text-red-500 ml-6 text-xs">
-                [Exit code: {item.exitCode}]
-              </div>
-            )}
-          </div>
-        ))}
-        {isExecuting && (
-          <div className="flex items-start gap-2">
-            <span className="text-green-400">{getPrompt()}</span>
-            <span className="text-white">{command}</span>
-            <span className="animate-pulse">▋</span>
-          </div>
-        )}
-      </div>
-
-      {/* Input Area */}
-      <div className="border-t border-gray-700 bg-gray-800 p-4">
         <div className="flex items-center gap-2">
-          <span className="text-green-400">{getPrompt()}</span>
-          <input
-            ref={inputRef}
-            type="text"
-            value={command}
-            onChange={(e) => {
-              setCommand(e.target.value);
-              historyIndexRef.current = commandHistoryRef.current.length;
-            }}
-            onKeyDown={handleKeyDown}
-            disabled={isExecuting}
-            placeholder={isExecuting ? 'Executing...' : 'Enter command...'}
-            className="flex-1 bg-transparent text-white outline-none placeholder-gray-500"
-            autoFocus
-          />
-        </div>
-        <div className="mt-2 text-xs text-gray-500">
-          <span>↑↓</span> Navigate history • <span>Enter</span> Execute • <span>Ctrl+C</span> Cancel (coming soon)
+          <div className={`w-2 h-2 rounded-full ${getStatusColor()}`}></div>
+          <span className="text-gray-400 text-xs">{getStatusText()}</span>
         </div>
       </div>
+
+      {/* Terminal Container */}
+      <div
+        ref={terminalRef}
+        className="flex-1 w-full"
+        style={{ 
+          height: '100%',
+          minHeight: '200px',
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      />
     </div>
   );
 }
-

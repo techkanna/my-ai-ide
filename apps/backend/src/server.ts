@@ -3,6 +3,7 @@ import 'dotenv/config';
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import { chatRoutes } from './routes/chat';
 import { agentRoutes } from './routes/agent';
 import { fsRoutes } from './routes/fs';
@@ -17,6 +18,9 @@ const server = Fastify({
 
 async function start() {
   try {
+    // Register WebSocket support
+    await server.register(websocket);
+
     // Register CORS with proper configuration for SSE
     await server.register(cors, {
       origin: true,

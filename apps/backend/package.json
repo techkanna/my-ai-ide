@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^8.4.0",
+    "@fastify/websocket": "^8.0.0",
     "@my-ai-ide/agent-core": "workspace:*",
     "@my-ai-ide/models": "workspace:*",
     "@my-ai-ide/shared": "workspace:*",

@@ -1,10 +1,20 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import MonacoEditor from '@monaco-editor/react';
 import { useEditorStore } from '@/store/editorStore';
 import { getBackendUrl } from '@/utils/config';
-import { Terminal } from './Terminal';
+
+// Dynamically import Terminal to avoid SSR issues with xterm.js
+const Terminal = dynamic(() => import('./Terminal').then(mod => ({ default: mod.Terminal })), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full flex items-center justify-center bg-gray-900 text-gray-400">
+      <div>Loading terminal...</div>
+    </div>
+  ),
+});
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 

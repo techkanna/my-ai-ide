@@ -25,5 +25,29 @@
   #__next {
     height: 100%;
   }
+
+  /* Terminal styles */
+  .xterm {
+    height: 100% !important;
+    width: 100% !important;
+    position: relative;
+  }
+
+  .xterm-viewport {
+    overflow: hidden !important;
+    width: 100% !important;
+  }
+
+  .xterm-screen {
+    width: 100% !important;
+  }
+
+  .xterm .xterm-viewport {
+    width: 100% !important;
+  }
+
+  .xterm .xterm-screen {
+    width: 100% !important;
+  }
 }
 
