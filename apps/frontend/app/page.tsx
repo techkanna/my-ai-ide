@@ -91,7 +91,7 @@ export default function Home() {
       </div>
       <div 
         ref={sidebarRef}
-        className="border-l border-gray-300 flex flex-col bg-gray-50 relative"
+        className="border-l border-gray-300 flex flex-col bg-gray-50 relative h-screen overflow-hidden"
         style={{ width: `${sidebarWidth}px`, minWidth: '200px', maxWidth: '800px' }}
       >
         <div
@@ -102,8 +102,12 @@ export default function Home() {
           }}
           style={{ marginLeft: '-4px', width: '8px' }}
         />
-        <ModelSelector />
-        <ChatPanel />
+        <div className="flex-shrink-0">
+          <ModelSelector />
+        </div>
+        <div className="flex-1 min-h-0">
+          <ChatPanel />
+        </div>
       </div>
     </div>
   );

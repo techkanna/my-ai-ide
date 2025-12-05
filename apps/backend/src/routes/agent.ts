@@ -21,7 +21,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
       apiKey,
       projectRoot,
     } = request.body;
-    
+    console.log("request.body",request.body);
     // Use provided projectRoot or get configured project root
     const root = projectRoot || getProjectRoot();
 

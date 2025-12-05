@@ -62,9 +62,11 @@ Available tools include: read_file, write_file, list_files, run_command, create_
       for await (const chunk of this.model.streamChat(state.messages)) {
         response += chunk;
       }
+      console.log("--response",response);
 
       // Check if response is a tool call
       const toolCall = this.parseToolCall(response);
+      console.log("--toolCall--",toolCall);
       if (toolCall) {
         state.toolCalls.push(toolCall);
         state.messages.push({

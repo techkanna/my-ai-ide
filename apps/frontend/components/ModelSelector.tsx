@@ -105,7 +105,7 @@ export function ModelSelector() {
   };
 
   return (
-    <div className="border-b border-gray-300 bg-white">
+    <div className="border-b border-gray-300 bg-white flex-shrink-0">
       <div 
         className="px-4 py-3 font-semibold border-b border-gray-300 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
         onClick={toggleCollapse}
