@@ -18,6 +18,7 @@ export function ModelSelector() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
     // Load saved preferences
@@ -32,6 +33,12 @@ export function ModelSelector() {
       } catch {
         // Ignore parse errors
       }
+    }
+    
+    // Load collapsed state
+    const collapsedState = localStorage.getItem('modelConfigCollapsed');
+    if (collapsedState !== null) {
+      setIsCollapsed(collapsedState === 'true');
     }
   }, []);
 
@@ -91,10 +98,25 @@ export function ModelSelector() {
     window.dispatchEvent(new CustomEvent('modelConfigChanged', { detail: config }));
   };
 
+  const toggleCollapse = () => {
+    const newCollapsed = !isCollapsed;
+    setIsCollapsed(newCollapsed);
+    localStorage.setItem('modelConfigCollapsed', String(newCollapsed));
+  };
+
   return (
     <div className="border-b border-gray-300 bg-white">
-      <div className="px-4 py-3 font-semibold border-b border-gray-300">Model Configuration</div>
-      <div className="p-4 flex flex-col gap-3">
+      <div 
+        className="px-4 py-3 font-semibold border-b border-gray-300 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+        onClick={toggleCollapse}
+      >
+        <span>Model Configuration</span>
+        <span className="text-gray-500 text-sm">
+          {isCollapsed ? '▶' : '▼'}
+        </span>
+      </div>
+      {!isCollapsed && (
+        <div className="p-4 flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-gray-600">Provider</label>
           <select 
@@ -171,7 +193,8 @@ export function ModelSelector() {
         >
           Save Configuration
         </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

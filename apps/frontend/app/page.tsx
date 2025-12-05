@@ -6,10 +6,13 @@ import { ChatPanel } from '@/components/ChatPanel';
 import { ModelSelector } from '@/components/ModelSelector';
 import { TabBar } from '@/components/TabBar';
 import { getBackendUrl } from '@/utils/config';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 export default function Home() {
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(350);
+  const [isResizing, setIsResizing] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Check if backend is online
@@ -27,7 +30,48 @@ export default function Home() {
       }
     };
     checkBackend();
+
+    // Load saved sidebar width
+    const savedWidth = localStorage.getItem('sidebarWidth');
+    if (savedWidth) {
+      const width = parseInt(savedWidth, 10);
+      if (width >= 200 && width <= 800) {
+        setSidebarWidth(width);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const newWidth = window.innerWidth - e.clientX;
+      // Constrain width between 200px and 800px
+      const constrainedWidth = Math.max(200, Math.min(800, newWidth));
+      setSidebarWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (isResizing) {
+        setIsResizing(false);
+        localStorage.setItem('sidebarWidth', String(sidebarWidth));
+      }
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, sidebarWidth]);
 
   return (
     <div className="flex h-screen w-screen">
@@ -45,7 +89,19 @@ export default function Home() {
           <Editor />
         </div>
       </div>
-      <div className="w-[350px] border-l border-gray-300 flex flex-col bg-gray-50">
+      <div 
+        ref={sidebarRef}
+        className="border-l border-gray-300 flex flex-col bg-gray-50 relative"
+        style={{ width: `${sidebarWidth}px`, minWidth: '200px', maxWidth: '800px' }}
+      >
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 transition-colors z-10"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsResizing(true);
+          }}
+          style={{ marginLeft: '-4px', width: '8px' }}
+        />
         <ModelSelector />
         <ChatPanel />
       </div>

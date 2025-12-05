@@ -31,7 +31,7 @@ export function ChatPanel() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${getBackendUrl()}/agent/run`, {
+      const payload = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -42,7 +42,8 @@ export function ChatPanel() {
           provider: 'ollama-local',
           model: localStorage.getItem('modelConfig') ? JSON.parse(localStorage.getItem('modelConfig') || '{}').model : undefined,
         }),
-      });
+      }
+      const response = await fetch(`${getBackendUrl()}/agent/run`, payload as RequestInit);
 
       if (!response.ok) {
         throw new Error('Failed to get response');
