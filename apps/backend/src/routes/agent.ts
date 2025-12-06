@@ -1,13 +1,15 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { OllamaCloudClient, OllamaLocalClient } from '@my-ai-ide/models';
+import { OllamaCloudClient, OllamaLocalClient, OpenAIClient } from '@my-ai-ide/models';
 import { AgentLoop } from '@my-ai-ide/agent-core';
 import { createBasicTools } from '@my-ai-ide/tools';
 import { getProjectRoot } from '../utils/projectRoot';
+import type { Message } from '@my-ai-ide/shared';
 
 interface AgentRequest {
   message: string;
+  messages?: Message[]; // Optional previous message history
   model?: string;
-  provider?: 'ollama-cloud' | 'ollama-local';
+  provider?: 'ollama-cloud' | 'ollama-local' | 'openai';
   apiKey?: string;
   projectRoot?: string;
 }
@@ -16,12 +18,13 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.post('/agent/run', async (request: FastifyRequest<{ Body: AgentRequest }>, reply: FastifyReply) => {
     const {
       message,
+      messages: previousMessages = [],
       model,
       provider = 'ollama-local',
       apiKey,
       projectRoot,
     } = request.body;
-    console.log("request.body",request.body);
+    console.log("request.body", JSON.stringify({ message, model, provider, hasApiKey: !!apiKey, messagesCount: previousMessages.length }));
     // Use provided projectRoot or get configured project root
     const root = projectRoot || getProjectRoot();
 
@@ -46,9 +49,14 @@ export async function agentRoutes(fastify: FastifyInstance) {
       reply.raw.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
       // Create model client
-      const modelClient = provider === 'ollama-cloud'
-        ? new OllamaCloudClient({ provider, model, apiKey })
-        : new OllamaLocalClient({ provider, model });
+      let modelClient;
+      if (provider === 'ollama-cloud') {
+        modelClient = new OllamaCloudClient({ provider, model, apiKey });
+      } else if (provider === 'openai') {
+        modelClient = new OpenAIClient({ provider, model, apiKey });
+      } else {
+        modelClient = new OllamaLocalClient({ provider, model });
+      }
 
       // Create tools
       const tools = createBasicTools(root);
@@ -62,7 +70,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
       // Run agent (for now, we'll stream the final result)
       // TODO: Stream intermediate steps in Phase 4
       try {
-        const result = await agent.run(message);
+        const result = await agent.run(message, previousMessages);
         reply.raw.write(`data: ${JSON.stringify({ type: 'result', ...result })}\n\n`);
         reply.raw.write('data: [DONE]\n\n');
       } catch (error) {

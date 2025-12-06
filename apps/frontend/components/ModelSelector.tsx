@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getBackendUrl } from '@/utils/config';
 
 interface ModelInfo {
-  provider: 'ollama-cloud' | 'ollama-local';
+  provider: 'ollama-cloud' | 'ollama-local' | 'openai';
   model: string;
   apiKey?: string;
   baseUrl?: string;
 }
 
 export function ModelSelector() {
-  const [provider, setProvider] = useState<'ollama-cloud' | 'ollama-local'>('ollama-local');
+  const [provider, setProvider] = useState<'ollama-cloud' | 'ollama-local' | 'openai'>('ollama-local');
   const [model, setModel] = useState('llama3.2');
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('http://localhost:11434');
@@ -19,6 +19,8 @@ export function ModelSelector() {
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const isInitialMount = useRef(true);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Load saved preferences
@@ -40,6 +42,11 @@ export function ModelSelector() {
     if (collapsedState !== null) {
       setIsCollapsed(collapsedState === 'true');
     }
+    
+    // Mark initial mount as complete after a short delay
+    setTimeout(() => {
+      isInitialMount.current = false;
+    }, 100);
   }, []);
 
   useEffect(() => {
@@ -67,6 +74,11 @@ export function ModelSelector() {
   };
 
   const loadModels = async () => {
+    // Only load models for ollama-local provider
+    if (provider !== 'ollama-local') {
+      return;
+    }
+    
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
@@ -78,7 +90,8 @@ export function ModelSelector() {
       
       const data = await response.json();
       setAvailableModels(data.models || []);
-      if (data.models && data.models.length > 0 && !data.models.includes(model)) {
+      // Only auto-select a model if current model is not in the list AND we're using ollama-local
+      if (data.models && data.models.length > 0 && provider === 'ollama-local' && !data.models.includes(model)) {
         setModel(data.models[0]);
       }
     } catch {
@@ -86,17 +99,38 @@ export function ModelSelector() {
     }
   };
 
-  const handleSave = () => {
-    const config: ModelInfo = {
-      provider,
-      model,
-      apiKey: provider === 'ollama-cloud' ? apiKey : undefined,
-      baseUrl: provider === 'ollama-local' ? baseUrl : undefined,
+  // Auto-save configuration when fields change
+  useEffect(() => {
+    // Skip saving on initial mount
+    if (isInitialMount.current) {
+      return;
+    }
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce save to avoid too many writes
+    saveTimeoutRef.current = setTimeout(() => {
+      const config: ModelInfo = {
+        provider,
+        model,
+        apiKey: (provider === 'ollama-cloud' || provider === 'openai') ? apiKey : undefined,
+        baseUrl: provider === 'ollama-local' ? baseUrl : undefined,
+      };
+      localStorage.setItem('modelConfig', JSON.stringify(config));
+      // Notify parent component or trigger update
+      window.dispatchEvent(new CustomEvent('modelConfigChanged', { detail: config }));
+    }, 300); // 300ms debounce
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
     };
-    localStorage.setItem('modelConfig', JSON.stringify(config));
-    // Notify parent component or trigger update
-    window.dispatchEvent(new CustomEvent('modelConfigChanged', { detail: config }));
-  };
+  }, [provider, model, apiKey, baseUrl]);
 
   const toggleCollapse = () => {
     const newCollapsed = !isCollapsed;
@@ -121,15 +155,27 @@ export function ModelSelector() {
           <label className="text-xs font-medium text-gray-600">Provider</label>
           <select 
             value={provider} 
-            onChange={(e) => setProvider(e.target.value as 'ollama-cloud' | 'ollama-local')}
+            onChange={(e) => {
+              const newProvider = e.target.value as 'ollama-cloud' | 'ollama-local' | 'openai';
+              setProvider(newProvider);
+              // Set default model when switching providers
+              if (newProvider === 'openai' && model !== 'gpt-4o-mini' && !availableModels.includes(model)) {
+                setModel('gpt-4o-mini');
+              } else if (newProvider === 'ollama-local' && availableModels.length > 0 && !availableModels.includes(model)) {
+                setModel(availableModels[0]);
+              } else if (newProvider === 'ollama-cloud' && model !== 'llama3.2') {
+                setModel('llama3.2');
+              }
+            }}
             className="px-2 py-2 border border-gray-300 rounded text-sm font-inherit focus:outline-none focus:border-blue-500"
           >
             <option value="ollama-local">Ollama Local</option>
             <option value="ollama-cloud">Ollama Cloud</option>
+            <option value="openai">OpenAI</option>
           </select>
         </div>
 
-        {provider === 'ollama-cloud' && (
+        {(provider === 'ollama-cloud' || provider === 'openai') && (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-600">API Key</label>
             <input
@@ -176,6 +222,18 @@ export function ModelSelector() {
                 </option>
               ))}
             </select>
+          ) : provider === 'openai' ? (
+            <select 
+              value={model} 
+              onChange={(e) => setModel(e.target.value)}
+              className="px-2 py-2 border border-gray-300 rounded text-sm font-inherit focus:outline-none focus:border-blue-500"
+            >
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-4-turbo">GPT-4 Turbo</option>
+              <option value="gpt-4">GPT-4</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+            </select>
           ) : (
             <input
               type="text"
@@ -186,13 +244,6 @@ export function ModelSelector() {
             />
           )}
         </div>
-
-        <button 
-          onClick={handleSave} 
-          className="px-4 py-2 bg-blue-600 text-white border-none rounded cursor-pointer font-medium hover:bg-blue-700 mt-2"
-        >
-          Save Configuration
-        </button>
         </div>
       )}
     </div>

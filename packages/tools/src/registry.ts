@@ -66,6 +66,25 @@ export function createBasicTools(projectRoot: string): ToolDefinition[] {
       },
     },
     {
+      name: 'delete_file',
+      description: 'Delete a file or directory (recursively for directories)',
+      schema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Path to the file or directory to delete',
+          },
+        },
+        required: ['path'],
+      },
+      execute: async (args: Record<string, unknown>) => {
+        const path = args.path as string;
+        await fs.deleteFile(path);
+        return { success: true, message: `Deleted: ${path}` };
+      },
+    },
+    {
       name: 'run_command',
       description: 'Execute a shell command',
       schema: {

@@ -1,11 +1,11 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { OllamaCloudClient, OllamaLocalClient } from '@my-ai-ide/models';
+import { OllamaCloudClient, OllamaLocalClient, OpenAIClient } from '@my-ai-ide/models';
 import type { Message } from '@my-ai-ide/shared';
 
 interface ChatRequest {
   messages: Message[];
   model?: string;
-  provider?: 'ollama-cloud' | 'ollama-local';
+  provider?: 'ollama-cloud' | 'ollama-local' | 'openai';
   apiKey?: string;
 }
 
@@ -19,9 +19,14 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
     try {
       // Create model client
-      const modelClient = provider === 'ollama-cloud'
-        ? new OllamaCloudClient({ provider, model, apiKey })
-        : new OllamaLocalClient({ provider, model });
+      let modelClient;
+      if (provider === 'ollama-cloud') {
+        modelClient = new OllamaCloudClient({ provider, model, apiKey });
+      } else if (provider === 'openai') {
+        modelClient = new OpenAIClient({ provider, model, apiKey });
+      } else {
+        modelClient = new OllamaLocalClient({ provider, model });
+      }
 
       // Set up SSE
       reply.raw.setHeader('Content-Type', 'text/event-stream');

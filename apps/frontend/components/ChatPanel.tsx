@@ -36,18 +36,45 @@ export function ChatPanel() {
       const modelConfigStr = localStorage.getItem('modelConfig');
       const modelConfig = modelConfigStr ? JSON.parse(modelConfigStr) : {};
       
+      // Determine provider and model with proper defaults
+      const provider = modelConfig.provider || 'ollama-local';
+      let model = modelConfig.model;
+      
+      // Validate and set default model based on provider
+      const openaiModels = ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'];
+      
+      if (!model || model.trim() === '') {
+        // No model set, use provider default
+        if (provider === 'openai') {
+          model = 'gpt-4o-mini';
+        } else if (provider === 'ollama-cloud') {
+          model = 'llama3.2';
+        } else {
+          model = 'llama3.2';
+        }
+      } else if (provider === 'openai' && !openaiModels.includes(model)) {
+        // Provider is OpenAI but model is not an OpenAI model, use default
+        console.warn(`Model ${model} is not valid for OpenAI provider, using default`);
+        model = 'gpt-4o-mini';
+      }
+      
+      const requestBody = {
+        message: input,
+        messages: messages, // Send full chat history
+        provider: provider,
+        model: model,
+        apiKey: modelConfig.apiKey,
+      };
+      
+      console.log('Sending request with model config:', { provider, model, hasApiKey: !!modelConfig.apiKey });
+      
       const payload = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({
-          message: input,
-          provider: modelConfig.provider || 'ollama-local',
-          model: modelConfig.model,
-          apiKey: modelConfig.apiKey,
-        }),
+        body: JSON.stringify(requestBody),
       }
       const response = await fetch(`${getBackendUrl()}/agent/run`, payload as RequestInit);
 

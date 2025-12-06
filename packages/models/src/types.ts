@@ -5,7 +5,7 @@ export interface ModelClient {
 }
 
 export interface ModelConfig {
-  provider: 'ollama-cloud' | 'ollama-local';
+  provider: 'ollama-cloud' | 'ollama-local' | 'openai';
   model?: string;
   apiKey?: string;
   baseUrl?: string;
